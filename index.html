@@ -3,612 +3,256 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Bunty's Escape - Pro Edition</title>
+    <title>Bunty's Escape 3D</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        body { background: #0f172a; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; color: #ffffff; overflow: hidden; padding: 10px; }
-        .game-container { display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 820px; }
-        .scoreboard { display: flex; gap: 10px; font-size: 15px; font-weight: bold; flex-wrap: wrap; justify-content: center; margin-bottom: 15px; }
-        .score-box { background: rgba(255, 255, 255, 0.08); padding: 8px 14px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.15); display: flex; align-items: center; gap: 5px; }
-        .lives-box { background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.3); }
-        .best-box { background: rgba(250, 204, 21, 0.1); border-color: rgba(250, 204, 21, 0.3); color: #facc15; }
-        #gameCanvas { border: 3px solid #334155; border-radius: 12px; box-shadow: 0 16px 32px rgba(0, 0, 0, 0.5); background: #38bdf8; cursor: pointer; max-width: 100%; height: auto; touch-action: none; -webkit-tap-highlight-color: transparent; }
-        .controls-hint { margin-top: 15px; font-size: 13px; line-height: 1.6; color: #94a3b8; text-align: center; background: rgba(0, 0, 0, 0.3); padding: 10px 20px; border-radius: 8px; }
-        .controls-hint b { color: #facc15; }
+        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: 'Segoe UI', sans-serif; }
+        body { margin: 0; overflow: hidden; background-color: #87CEEB; }
+        
+        #ui-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; /* Let clicks pass through to the 3D canvas */
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 24px;
+            font-weight: bold;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        #gameOverScreen {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 40px;
+            border-radius: 15px;
+            text-align: center;
+            color: white;
+            display: none;
+            pointer-events: auto; /* Allow clicking here */
+        }
+
+        #gameOverScreen h1 { color: #ef4444; font-size: 40px; margin-bottom: 10px; }
+        #gameOverScreen button {
+            padding: 10px 20px; font-size: 20px; font-weight: bold;
+            background: #facc15; border: none; border-radius: 8px;
+            cursor: pointer; margin-top: 20px;
+        }
+        
+        .controls-hint {
+            text-align: center; color: white; font-size: 16px;
+            text-shadow: 1px 1px 2px black; margin-bottom: 10px;
+        }
     </style>
+    <!-- Three.js Library Load -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
-    <div class="game-container">
+
+    <!-- UI Layer over the 3D Canvas -->
+    <div id="ui-layer">
         <div class="header">
-            <div class="scoreboard">
-                <div class="score-box lives-box">Lives: <span id="livesText">❤️❤️❤️❤️❤️</span></div>
-                <div class="score-box">Score: <span id="scoreText">0</span></div>
-                <div class="score-box">Carrots: 🥕 <span id="carrotText">0</span></div>
-                <div class="score-box best-box">Best: <span id="highScoreText">0</span></div>
-            </div>
+            <div id="scoreText">Score: 0</div>
+            <div>🐰 Bunty 3D</div>
         </div>
-        <canvas id="gameCanvas" width="800" height="360"></canvas>
-        <div class="controls-hint">
-            <b>Desktop:</b> [W/Space/Up] = Jump | [S/Down] = Duck | [P] = Pause | [U] = Upgrade Life<br>
-            <b>Mobile:</b> Tap Right Side = Jump | Hold Left Side = Duck
-        </div>
+        <div class="controls-hint">Tap Screen or Press SPACE to Jump</div>
     </div>
+
+    <!-- Game Over Screen -->
+    <div id="gameOverScreen">
+        <h1>GAME OVER</h1>
+        <p id="finalScore">Score: 0</p>
+        <button onclick="restartGame()">Play Again</button>
+    </div>
+
     <script>
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        const scoreText = document.getElementById('scoreText');
-        const carrotText = document.getElementById('carrotText');
-        const highScoreText = document.getElementById('highScoreText');
-        const livesText = document.getElementById('livesText');
+        // 1. Scene Setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('#87CEEB'); // Sky Blue
+        scene.fog = new THREE.Fog('#87CEEB', 10, 50); // Adds depth
 
-        // Audio Engine
-        let audioCtx = null;
-        
-        // Handling the jump mp3 safely
-        let jumpMp3 = null;
-        try {
-            jumpMp3 = new Audio('jump.mp3');
-        } catch(e) {}
+        // 2. Camera Setup
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 5, 10); // Position behind and slightly above
+        camera.lookAt(0, 0, -10);
 
-        function initAudio() {
-            if (!audioCtx) {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            }
-        }
+        // 3. Renderer Setup
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true; // Enable Shadows
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
 
-        function playSound(type) {
-            if (type === 'jump' && jumpMp3) {
-                try {
-                    jumpMp3.currentTime = 0; 
-                    let playPromise = jumpMp3.play();
-                    if (playPromise !== undefined) {
-                        playPromise.catch(error => {
-                            playSynthJump();
-                        });
-                    }
-                    return; 
-                } catch(e) { playSynthJump(); return; }
-            } else if (type === 'jump') {
-                playSynthJump();
-                return;
-            }
+        // 4. Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
 
-            if (!audioCtx) return;
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-            try {
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-                osc.connect(gain);
-                gain.connect(audioCtx.destination);
-                const now = audioCtx.currentTime;
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(10, 20, 10);
+        dirLight.castShadow = true;
+        dirLight.shadow.camera.left = -20;
+        dirLight.shadow.camera.right = 20;
+        dirLight.shadow.camera.top = 20;
+        dirLight.shadow.camera.bottom = -20;
+        scene.add(dirLight);
 
-                if (type === 'carrot') {
-                    osc.type = 'triangle';
-                    osc.frequency.setValueAtTime(600, now);
-                    osc.frequency.setValueAtTime(900, now + 0.1);
-                    gain.gain.setValueAtTime(0.2, now);
-                    gain.gain.linearRampToValueAtTime(0, now + 0.2);
-                    osc.start(now);
-                    osc.stop(now + 0.2);
-                } else if (type === 'gold' || type === 'upgrade') {
-                    osc.type = 'square';
-                    osc.frequency.setValueAtTime(400, now);
-                    osc.frequency.setValueAtTime(800, now + 0.1);
-                    osc.frequency.setValueAtTime(1200, now + 0.2);
-                    gain.gain.setValueAtTime(0.2, now);
-                    gain.gain.linearRampToValueAtTime(0, now + 0.3);
-                    osc.start(now);
-                    osc.stop(now + 0.3);
-                } else if (type === 'hit') {
-                    osc.type = 'sawtooth';
-                    osc.frequency.setValueAtTime(150, now);
-                    osc.frequency.linearRampToValueAtTime(40, now + 0.2);
-                    gain.gain.setValueAtTime(0.3, now);
-                    gain.gain.linearRampToValueAtTime(0, now + 0.2);
-                    osc.start(now);
-                    osc.stop(now + 0.2);
-                } else if (type === 'life') {
-                    osc.type = 'sine';
-                    osc.frequency.setValueAtTime(600, now);
-                    osc.frequency.linearRampToValueAtTime(1200, now + 0.2);
-                    gain.gain.setValueAtTime(0.2, now);
-                    gain.gain.linearRampToValueAtTime(0, now + 0.3);
-                    osc.start(now);
-                    osc.stop(now + 0.3);
-                }
-            } catch (e) {}
-        }
-        
-        function playSynthJump() {
-            if (!audioCtx) return;
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-            try {
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-                osc.connect(gain);
-                gain.connect(audioCtx.destination);
-                const now = audioCtx.currentTime;
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(300, now);
-                osc.frequency.exponentialRampToValueAtTime(600, now + 0.1);
-                gain.gain.setValueAtTime(0.15, now);
-                gain.gain.linearRampToValueAtTime(0, now + 0.1);
-                osc.start(now);
-                osc.stop(now + 0.1);
-            } catch(e) {}
-        }
+        // 5. Game Objects
+        // Ground
+        const groundGeo = new THREE.PlaneGeometry(50, 200);
+        const groundMat = new THREE.MeshStandardMaterial({ color: '#228B22' }); // Forest Green
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        scene.add(ground);
 
-        // Helper: Round Rectangle
-        function safeRoundRect(c, x, y, width, height, radius) {
-            c.beginPath();
-            c.moveTo(x + radius, y);
-            c.lineTo(x + width - radius, y);
-            c.quadraticCurveTo(x + width, y, x + width, y + radius);
-            c.lineTo(x + width, y + height - radius);
-            c.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-            c.lineTo(x + radius, y + height);
-            c.quadraticCurveTo(x, y + height, x, y + height - radius);
-            c.lineTo(x, y + radius);
-            c.quadraticCurveTo(x, y, x + radius, y);
-            c.closePath();
-            c.fill();
-        }
+        // Player (Bunty)
+        const playerGeo = new THREE.BoxGeometry(1, 1.5, 1);
+        const playerMat = new THREE.MeshStandardMaterial({ color: '#ffffff' }); // White
+        const player = new THREE.Mesh(playerGeo, playerMat);
+        player.position.set(0, 0.75, 0);
+        player.castShadow = true;
+        scene.add(player);
 
-        let gameState = 'START';
-        const groundY = 290;
-        const UPGRADE_COST = 150; 
-
-        let MAX_LIVES = parseInt(localStorage.getItem('bunty_max_lives') || 5);
-        let bankCarrots = parseInt(localStorage.getItem('bunty_bank_carrots') || 0);
-        let highScore = parseInt(localStorage.getItem('bunty_high_score') || 0);
-        highScoreText.innerText = highScore;
-
-        let lives = MAX_LIVES;
-        let gameSpeed = 6.5;
+        // Game Variables
+        let isGameOver = false;
         let score = 0;
-        let runCarrots = 0; 
-        let shakeIntensity = 0;
-        let spawnTimer = 0;
-        let itemTimer = 0;
-
-        const player = {
-            x: 80, y: groundY - 48, width: 36, height: 48, standHeight: 48, duckHeight: 26,
-            vy: 0, gravity: 0.8, jumpForce: -13.5, isGrounded: true, jumpsLeft: 2,
-            isDucking: false, hasShield: false, invulnerableTimer: 0, particles: [], trail: []
-        };
+        let gameSpeed = 0.3;
+        
+        // Player Physics
+        let vy = 0;
+        let gravity = -0.015;
+        let jumpForce = 0.35;
+        let isGrounded = true;
 
         let obstacles = [];
-        let items = [];
-        let floatingTexts = [];
-        const clouds = [
-            { x: 50, y: 45, speed: 0.4, w: 70 },
-            { x: 320, y: 75, speed: 0.6, w: 90 },
-            { x: 620, y: 35, speed: 0.5, w: 80 }
-        ];
+        let frames = 0;
 
-        function updateLivesDisplay() {
-            let hearts = '';
-            for (let i = 0; i < lives; i++) hearts += '❤️';
-            for (let i = lives; i < MAX_LIVES; i++) hearts += '🖤';
-            livesText.innerText = hearts;
-        }
-        updateLivesDisplay();
+        // UI Elements
+        const scoreUI = document.getElementById('scoreText');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const finalScoreUI = document.getElementById('finalScore');
 
-        function applyShake(intensity) { shakeIntensity = intensity; }
-
-        function buyLifeUpgrade() {
-            if (bankCarrots >= UPGRADE_COST && MAX_LIVES < 10) {
-                bankCarrots -= UPGRADE_COST;
-                MAX_LIVES++;
-                lives = MAX_LIVES;
-                localStorage.setItem('bunty_max_lives', MAX_LIVES);
-                localStorage.setItem('bunty_bank_carrots', bankCarrots);
-                updateLivesDisplay();
-                playSound('upgrade');
-                addFloatingText(canvas.width / 2 - 30, canvas.height / 2 + 50, '+1 MAX LIFE!', '#fbbf24');
-            }
-        }
-
-        function triggerAction() {
-            initAudio();
-            if (gameState === 'START' || gameState === 'GAMEOVER') {
-                resetGame();
-                gameState = 'PLAYING';
-                return;
-            }
-            if (gameState === 'PLAYING' && player.jumpsLeft > 0 && !player.isDucking) {
-                player.vy = player.jumpForce;
-                player.isGrounded = false;
-                player.jumpsLeft--;
-                playSound('jump');
-                addParticles(player.x + player.width / 2, player.y + player.height, 8, '#ffffff');
+        // 6. Controls
+        function jump() {
+            if (isGameOver) return;
+            if (isGrounded) {
+                vy = jumpForce;
+                isGrounded = false;
             }
         }
 
         window.addEventListener('keydown', (e) => {
-            if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
-                triggerAction();
-            } else if ((e.code === 'ArrowDown' || e.code === 'KeyS') && player.isGrounded && gameState === 'PLAYING') {
-                player.isDucking = true;
-                player.height = player.duckHeight;
-                player.y = groundY - player.duckHeight;
-            } else if (e.code === 'KeyP' && gameState !== 'GAMEOVER' && gameState !== 'START') {
-                gameState = gameState === 'PLAYING' ? 'PAUSED' : 'PLAYING';
-            } else if (e.code === 'KeyR') {
-                resetGame();
-                gameState = 'PLAYING';
-            } else if (e.code === 'KeyU') {
-                if (gameState !== 'PLAYING') buyLifeUpgrade();
-            }
+            if (e.code === 'Space' || e.code === 'ArrowUp') jump();
+        });
+        window.addEventListener('touchstart', jump);
+        window.addEventListener('mousedown', jump);
+
+        // Resize Handler
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
         });
 
-        window.addEventListener('keyup', (e) => {
-            if (e.code === 'ArrowDown' || e.code === 'KeyS') {
-                player.isDucking = false;
-                player.height = player.standHeight;
-                player.y = groundY - player.standHeight;
-            }
-        });
-
-        canvas.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            if (gameState !== 'PLAYING') { triggerAction(); return; }
-            const rect = canvas.getBoundingClientRect();
-            const touchX = e.touches[0].clientX - rect.left;
-            if (touchX < canvas.width / 2) {
-                if (player.isGrounded) {
-                    player.isDucking = true;
-                    player.height = player.duckHeight;
-                    player.y = groundY - player.duckHeight;
-                }
-            } else { triggerAction(); }
-        }, { passive: false });
-
-        canvas.addEventListener('touchend', (e) => {
-            e.preventDefault();
-            player.isDucking = false;
-            player.height = player.standHeight;
-            player.y = groundY - player.standHeight;
-        });
-
-        canvas.addEventListener('mousedown', (e) => {
-            const rect = canvas.getBoundingClientRect();
-            const clickX = e.clientX - rect.left;
-            if (clickX > canvas.width / 2 || gameState !== 'PLAYING') triggerAction();
-        });
-
-        window.addEventListener('blur', () => {
-            if (gameState === 'PLAYING') gameState = 'PAUSED';
-        });
-
-        function addParticles(x, y, count, color) {
-            for (let i = 0; i < count; i++) {
-                player.particles.push({
-                    x, y, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4,
-                    size: Math.random() * 4 + 2, alpha: 1, color: color
-                });
-            }
+        // 7. Spawn Obstacles
+        function spawnObstacle() {
+            const obsGeo = new THREE.BoxGeometry(1.5, 1, 1.5);
+            const obsMat = new THREE.MeshStandardMaterial({ color: '#ef4444' }); // Red
+            const obstacle = new THREE.Mesh(obsGeo, obsMat);
+            
+            // Random position on X axis (-2, 0, 2)
+            const lanes = [-2, 0, 2];
+            const lane = lanes[Math.floor(Math.random() * lanes.length)];
+            
+            obstacle.position.set(lane, 0.5, -40); // Spawn far away
+            obstacle.castShadow = true;
+            obstacle.receiveShadow = true;
+            
+            scene.add(obstacle);
+            obstacles.push(obstacle);
         }
 
-        function addFloatingText(x, y, text, color) {
-            floatingTexts.push({ x, y, text, color, alpha: 1, life: 40 });
+        // 8. Game Reset
+        function restartGame() {
+            obstacles.forEach(obs => scene.remove(obs));
+            obstacles = [];
+            score = 0;
+            gameSpeed = 0.3;
+            player.position.y = 0.75;
+            vy = 0;
+            isGrounded = true;
+            isGameOver = false;
+            gameOverScreen.style.display = 'none';
         }
 
-        function drawBunty(x, y, w, h, isDucking) {
-            if (player.invulnerableTimer > 0 && Math.floor(player.invulnerableTimer / 5) % 2 === 0) return;
-            ctx.save();
-            if (!player.isGrounded) {
-                player.trail.forEach((t, i) => {
-                    ctx.globalAlpha = (i + 1) * 0.05;
-                    ctx.fillStyle = '#ffffff';
-                    safeRoundRect(ctx, t.x, t.y, w, h, 8);
-                });
-                ctx.globalAlpha = 1;
-            }
-            ctx.fillStyle = '#ffffff';
-            safeRoundRect(ctx, x, y, w, h, 8); 
-            if (!isDucking) {
-                safeRoundRect(ctx, x + 5, y - 16, 7, 18, 3);
-                safeRoundRect(ctx, x + 18, y - 16, 7, 18, 3);
-                ctx.fillStyle = '#f472b6';
-                safeRoundRect(ctx, x + 7, y - 12, 3, 12, 1);
-                safeRoundRect(ctx, x + 20, y - 12, 3, 12, 1);
-            }
-            ctx.fillStyle = '#1e293b'; 
-            ctx.beginPath(); ctx.arc(x + w - 10, y + (isDucking ? 10 : 14), 3, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = '#fb7185'; 
-            ctx.beginPath(); ctx.arc(x + w - 2, y + (isDucking ? 14 : 20), 2.5, 0, Math.PI * 2); ctx.fill();
-            if (player.hasShield) { 
-                ctx.strokeStyle = '#00f0ff'; ctx.lineWidth = 3;
-                ctx.beginPath(); ctx.arc(x + w / 2, y + h / 2, Math.max(w, h) * 0.75, 0, Math.PI * 2); ctx.stroke();
-            }
-            ctx.restore();
-        }
+        // 9. Main Game Loop (Animation)
+        function animate() {
+            requestAnimationFrame(animate);
 
-        function drawObstacle(obs) {
-            ctx.save();
-            if (obs.type === 'ground') { 
-                ctx.fillStyle = '#475569';
-                ctx.beginPath(); ctx.arc(obs.x + 16, obs.y + 16, 16, 0, Math.PI * 2); ctx.fill();
-                ctx.fillStyle = '#ef4444';
-                ctx.beginPath(); ctx.arc(obs.x + 6, obs.y + 12, 2.5, 0, Math.PI * 2); ctx.fill();
-            } else { 
-                ctx.fillStyle = '#1e1b4b';
-                ctx.beginPath(); ctx.moveTo(obs.x, obs.y + 10); ctx.lineTo(obs.x + 14, obs.y - 6);
-                ctx.lineTo(obs.x + 28, obs.y + 10); ctx.lineTo(obs.x + 14, obs.y + 6); ctx.fill();
-            }
-            ctx.restore();
-        }
+            if (isGameOver) return;
 
-        function drawCarrot(x, y, isGold) {
-            ctx.save();
-            ctx.fillStyle = isGold ? '#fbbf24' : '#f97316';
-            ctx.beginPath(); ctx.moveTo(x + 10, y + 20); ctx.lineTo(x, y + 4); ctx.lineTo(x + 20, y + 4); ctx.fill();
-            ctx.fillStyle = '#22c55e'; ctx.fillRect(x + 8, y - 2, 4, 6);
-            if (isGold) { ctx.shadowBlur = 10; ctx.shadowColor = '#facc15'; ctx.fill(); }
-            ctx.restore();
-        }
+            frames++;
 
-        function drawShieldItem(x, y) {
-            ctx.save();
-            ctx.fillStyle = '#06b6d4';
-            ctx.beginPath(); ctx.arc(x + 10, y + 10, 10, 0, Math.PI * 2); ctx.fill();
-            ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
-            ctx.restore();
-        }
+            // Player Physics Update
+            vy += gravity;
+            player.position.y += vy;
 
-        function drawHeartItem(x, y) {
-            ctx.save();
-            ctx.fillStyle = '#ef4444';
-            ctx.beginPath();
-            ctx.arc(x + 6, y + 6, 6, Math.PI, 0);
-            ctx.arc(x + 18, y + 6, 6, Math.PI, 0);
-            ctx.lineTo(x + 12, y + 22);
-            ctx.closePath();
-            ctx.fill();
-            ctx.shadowBlur = 8; ctx.shadowColor = '#ef4444'; ctx.fill();
-            ctx.restore();
-        }
-
-        function drawBackground() {
-            const colors = ['#38bdf8', '#fb923c', '#f59e0b', '#8b5cf6', '#ec4899'];
-            let colorIndex = Math.floor(score / 500) % colors.length;
-            ctx.fillStyle = colors[colorIndex];
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
-            clouds.forEach(c => {
-                if (gameState === 'PLAYING') c.x -= c.speed;
-                if (c.x < -100) c.x = canvas.width + 50;
-                ctx.beginPath(); ctx.arc(c.x, c.y, c.w * 0.25, 0, Math.PI * 2);
-                ctx.arc(c.x + c.w * 0.3, c.y - 8, c.w * 0.3, 0, Math.PI * 2);
-                ctx.arc(c.x + c.w * 0.6, c.y, c.w * 0.25, 0, Math.PI * 2); ctx.fill();
-            });
-
-            ctx.fillStyle = '#15803d'; 
-            ctx.beginPath(); ctx.moveTo(0, groundY); ctx.lineTo(160, 180); ctx.lineTo(340, groundY);
-            ctx.lineTo(540, 190); ctx.lineTo(720, groundY); ctx.fill();
-
-            ctx.fillStyle = '#16a34a'; ctx.fillRect(0, groundY, canvas.width, 16);
-            ctx.fillStyle = '#78350f'; ctx.fillRect(0, groundY + 16, canvas.width, canvas.height - groundY - 16);
-        }
-
-        function drawUIOverlays() {
-            if (gameState === 'START' || gameState === 'PAUSED' || gameState === 'GAMEOVER') {
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'; 
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.textAlign = 'center';
-
-                ctx.fillStyle = '#c2410c'; ctx.font = 'bold 18px sans-serif';
-                ctx.fillText(`🥕 Bank: ${bankCarrots}`, canvas.width - 70, 30);
-
-                if (gameState === 'START') {
-                    ctx.fillStyle = '#92400e'; ctx.font = 'bold 36px sans-serif';
-                    ctx.fillText("BUNTY'S ESCAPE", canvas.width / 2, canvas.height / 2 - 30);
-                    ctx.fillStyle = '#1e3a8a'; ctx.font = '16px sans-serif';
-                    ctx.fillText('Right Tap: JUMP | Left Tap: DUCK', canvas.width / 2, canvas.height / 2 + 10);
-                } else if (gameState === 'PAUSED') {
-                    ctx.fillStyle = '#92400e'; ctx.font = 'bold 36px sans-serif';
-                    ctx.fillText('PAUSED', canvas.width / 2, canvas.height / 2 - 20);
-                    ctx.fillStyle = '#1e3a8a'; ctx.font = '15px sans-serif';
-                    ctx.fillText('Press [P] to Resume', canvas.width / 2, canvas.height / 2 + 20);
-                } else if (gameState === 'GAMEOVER') {
-                    ctx.fillStyle = '#b91c1c'; ctx.font = 'bold 36px sans-serif';
-                    ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 30);
-                    ctx.fillStyle = '#1e3a8a'; ctx.font = '16px sans-serif';
-                    ctx.fillText('Tap Screen or [R] to Play Again', canvas.width / 2, canvas.height / 2 + 10);
-                }
-
-                if (MAX_LIVES < 10) {
-                    ctx.fillStyle = bankCarrots >= UPGRADE_COST ? '#16a34a' : '#1e3a8a';
-                    ctx.font = '14px sans-serif';
-                    ctx.fillText(`Press [U] to Upgrade Max Life (Cost: ${UPGRADE_COST} 🥕)`, canvas.width / 2, canvas.height - 30);
-                } else {
-                    ctx.fillStyle = '#92400e'; ctx.font = '14px sans-serif';
-                    ctx.fillText(`MAX LIVES REACHED!`, canvas.width / 2, canvas.height - 30);
-                }
-                ctx.textAlign = 'left';
-            }
-        }
-
-        function resetGame() {
-            lives = MAX_LIVES; updateLivesDisplay();
-            score = 0; runCarrots = 0; gameSpeed = 6.5;
-            obstacles = []; items = []; floatingTexts = [];
-            player.particles = []; player.trail = [];
-            player.vy = 0; player.isDucking = false;
-            player.height = player.standHeight; player.y = groundY - player.standHeight;
-            player.hasShield = false; player.invulnerableTimer = 0; shakeIntensity = 0;
-        }
-
-        let lastTime = performance.now();
-
-        function gameLoop(currentTime) {
-            const dt = Math.min((currentTime - lastTime) / 16.666, 2) || 1;
-            lastTime = currentTime;
-
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            ctx.save();
-            if (shakeIntensity > 0) {
-                ctx.translate((Math.random() - 0.5) * shakeIntensity, (Math.random() - 0.5) * shakeIntensity);
-                shakeIntensity *= 0.88;
-                if (shakeIntensity < 0.5) shakeIntensity = 0;
+            // Ground Collision
+            if (player.position.y <= 0.75) {
+                player.position.y = 0.75;
+                vy = 0;
+                isGrounded = true;
             }
 
-            drawBackground();
-
-            if (gameState === 'PLAYING') {
-                if (player.invulnerableTimer > 0) player.invulnerableTimer -= dt;
-
-                player.y += player.vy * dt;
-                if (!player.isGrounded) {
-                    player.vy += player.gravity * dt;
-                    player.trail.push({ x: player.x, y: player.y });
-                    if (player.trail.length > 5) player.trail.shift();
-                } else {
-                    player.trail = [];
-                }
-
-                if (player.y >= groundY - player.height) {
-                    player.y = groundY - player.height;
-                    player.vy = 0; player.isGrounded = true; player.jumpsLeft = 2;
-                }
-
-                for (let i = player.particles.length - 1; i >= 0; i--) {
-                    const p = player.particles[i];
-                    p.x += p.vx * dt; p.y += p.vy * dt; p.alpha -= 0.04 * dt;
-                    ctx.fillStyle = p.color; ctx.globalAlpha = p.alpha;
-                    ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
-                    if (p.alpha <= 0) player.particles.splice(i, 1);
-                }
-                ctx.globalAlpha = 1;
-
-                for (let i = floatingTexts.length - 1; i >= 0; i--) {
-                    const t = floatingTexts[i];
-                    t.y -= 1.5 * dt; t.alpha -= 0.02 * dt; t.life -= dt;
-                    ctx.fillStyle = t.color; ctx.globalAlpha = Math.max(0, t.alpha);
-                    ctx.font = 'bold 20px sans-serif'; ctx.fillText(t.text, t.x, t.y);
-                    if (t.life <= 0) floatingTexts.splice(i, 1);
-                }
-                ctx.globalAlpha = 1;
-
-                spawnTimer += dt;
-                if (spawnTimer > Math.max(40, 100 - gameSpeed * 4)) {
-                    spawnTimer = 0;
-                    const isGround = Math.random() > 0.35;
-                    obstacles.push({
-                        x: canvas.width, y: isGround ? groundY - 32 : groundY - 76,
-                        width: isGround ? 32 : 28, height: isGround ? 32 : 18,
-                        type: isGround ? 'ground' : 'flying'
-                    });
-                }
-
-                for (let i = obstacles.length - 1; i >= 0; i--) {
-                    const obs = obstacles[i];
-                    obs.x -= gameSpeed * dt;
-                    drawObstacle(obs);
-
-                    if (player.x < obs.x + obs.width && player.x + player.width > obs.x &&
-                        player.y < obs.y + obs.height && player.y + player.height > obs.y) {
-                        
-                        if (player.hasShield) {
-                            player.hasShield = false; applyShake(10);
-                            addParticles(player.x + 18, player.y + 24, 15, '#00f0ff');
-                            obstacles.splice(i, 1); playSound('hit'); continue;
-                        } else if (player.invulnerableTimer <= 0) {
-                            lives--; updateLivesDisplay(); playSound('hit'); applyShake(18);
-                            addParticles(player.x + 18, player.y + 24, 20, '#ef4444');
-                            player.invulnerableTimer = 60; obstacles.splice(i, 1);
-
-                            if (lives <= 0) {
-                                gameState = 'GAMEOVER';
-                                if (score > highScore) {
-                                    highScore = score;
-                                    try { localStorage.setItem('bunty_high_score', highScore); } catch (e) {}
-                                    highScoreText.innerText = highScore;
-                                }
-                                break;
-                            }
-                        }
-                    }
-                    if (obs.x + obs.width < 0) obstacles.splice(i, 1);
-                }
-
-                itemTimer += dt;
-                if (itemTimer > 160) {
-                    itemTimer = 0;
-                    const rand = Math.random();
-                    let type = 'carrot';
-                    if (rand < 0.05) type = 'heart'; 
-                    else if (rand < 0.15) type = 'gold_carrot'; 
-                    else if (rand < 0.30) type = 'shield'; 
-
-                    items.push({
-                        x: canvas.width, y: groundY - (Math.random() > 0.5 ? 40 : 85),
-                        width: 24, height: 24, type: type
-                    });
-                }
-
-                for (let i = items.length - 1; i >= 0; i--) {
-                    const item = items[i];
-                    item.x -= gameSpeed * dt;
-
-                    if (item.type === 'shield') drawShieldItem(item.x, item.y);
-                    else if (item.type === 'heart') drawHeartItem(item.x, item.y);
-                    else drawCarrot(item.x, item.y, item.type === 'gold_carrot');
-
-                    if (player.x < item.x + item.width && player.x + player.width > item.x &&
-                        player.y < item.y + item.height && player.y + player.height > item.y) {
-                        
-                        if (item.type === 'carrot' || item.type === 'gold_carrot') {
-                            let amount = item.type === 'gold_carrot' ? 5 : 1;
-                            let pts = item.type === 'gold_carrot' ? 200 : 50;
-                            runCarrots += amount; bankCarrots += amount; score += pts;
-                            localStorage.setItem('bunty_bank_carrots', bankCarrots);
-                            playSound(item.type === 'gold_carrot' ? 'gold' : 'carrot');
-                            addFloatingText(item.x, item.y, `+${pts}`, item.type === 'gold_carrot' ? '#facc15' : '#f97316');
-                            addParticles(item.x + 10, item.y + 10, 10, item.type === 'gold_carrot' ? '#facc15' : '#f97316');
-                        } else if (item.type === 'shield') {
-                            player.hasShield = true; playSound('shield');
-                            addFloatingText(item.x, item.y, 'SHIELD', '#06b6d4');
-                        } else if (item.type === 'heart') {
-                            if (lives < MAX_LIVES) {
-                                lives++; updateLivesDisplay(); playSound('life');
-                                addFloatingText(item.x, item.y, '+1 LIFE', '#ef4444');
-                                addParticles(item.x + 10, item.y + 10, 15, '#ef4444');
-                            } else {
-                                score += 300; playSound('gold');
-                                addFloatingText(item.x, item.y, '+300 (MAX)', '#ef4444');
-                            }
-                        }
-                        items.splice(i, 1);
-                    }
-                    if (item.x + item.width < 0) items.splice(i, 1);
-                }
-
-                score += Math.round(1 * dt);
-                if (gameSpeed < 14) gameSpeed += 0.001 * dt;
-
-                scoreText.innerText = score;
-                carrotText.innerText = runCarrots;
-            } else {
-                obstacles.forEach(drawObstacle);
-                items.forEach(item => {
-                    if (item.type === 'shield') drawShieldItem(item.x, item.y);
-                    else if (item.type === 'heart') drawHeartItem(item.x, item.y);
-                    else drawCarrot(item.x, item.y, item.type === 'gold_carrot');
-                });
+            // Spawn Obstacles periodically
+            if (frames % Math.max(30, Math.floor(80 - gameSpeed * 50)) === 0) {
+                spawnObstacle();
             }
 
-            drawBunty(player.x, player.y, player.width, player.height, player.isDucking);
-            ctx.restore();
-            drawUIOverlays();
+            // Move Obstacles & Check Collisions
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                let obs = obstacles[i];
+                obs.position.z += gameSpeed;
 
-            requestAnimationFrame(gameLoop);
+                // Simple 3D AABB Collision Detection (Bounding Box)
+                const playerBox = new THREE.Box3().setFromObject(player);
+                const obsBox = new THREE.Box3().setFromObject(obs);
+
+                // Make player hitbox slightly smaller to be fair
+                playerBox.expandByScalar(-0.1); 
+
+                if (playerBox.intersectsBox(obsBox)) {
+                    isGameOver = true;
+                    finalScoreUI.innerText = `Score: ${Math.floor(score)}`;
+                    gameOverScreen.style.display = 'block';
+                }
+
+                // Remove obstacles that passed behind the camera
+                if (obs.position.z > 5) {
+                    scene.remove(obs);
+                    obstacles.splice(i, 1);
+                }
+            }
+
+            // Score and Speed Progression
+            score += 0.1;
+            scoreUI.innerText = `Score: ${Math.floor(score)}`;
+            if (gameSpeed < 0.8) gameSpeed += 0.0001;
+
+            // Render the 3D Scene
+            renderer.render(scene, camera);
         }
 
-        requestAnimationFrame(gameLoop);
+        // Start Game
+        animate();
     </script>
 </body>
 </html>
