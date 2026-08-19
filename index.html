@@ -1,31 +1,55 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Bunty's Escape - Pro Edition</title>
-    <link rel="stylesheet" href="style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { margin: 0; background: #38bdf8; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        canvas { background: #38bdf8; border: 5px solid white; }
+    </style>
 </head>
 <body>
-    <div class="game-container">
-        <div class="header">
-            <div class="scoreboard">
-                <div class="score-box lives-box">Lives: <span id="livesText">❤️❤️❤️❤️❤️</span></div>
-                <div class="score-box">Score: <span id="scoreText">0</span></div>
-                <div class="score-box">Carrots: 🥕 <span id="carrotText">0</span></div>
-                <div class="score-box best-box">Best: <span id="highScoreText">0</span></div>
-            </div>
-        </div>
+    <canvas id="gameCanvas" width="800" height="360"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        let playerY = 250;
+        let velY = 0;
+        let isJumping = false;
 
-        <!-- 2D Game Canvas -->
-        <canvas id="gameCanvas" width="800" height="360"></canvas>
+        function draw() {
+            ctx.clearRect(0, 0, 800, 360);
+            
+            // ज़मीन
+            ctx.fillStyle = "green";
+            ctx.fillRect(0, 300, 800, 60);
 
-        <div class="controls-hint">
-            <b>Desktop:</b> [W/Space/Up] = Jump | [S/Down] = Duck | [P] = Pause | [U] = Upgrade Life<br>
-            <b>Mobile:</b> Tap Right Side = Jump | Hold Left Side = Duck
-        </div>
-    </div>
+            // बंटी (Bunty)
+            ctx.fillStyle = "white";
+            ctx.fillRect(50, playerY, 50, 50);
 
-    <script src="script.js"></script>
+            // फिजिक्स
+            if (!isJumping) {
+                playerY = 250;
+            } else {
+                velY += 1;
+                playerY += velY;
+                if (playerY >= 250) {
+                    playerY = 250;
+                    isJumping = false;
+                }
+            }
+            requestAnimationFrame(draw);
+        }
+
+        window.addEventListener('keydown', () => {
+            if (!isJumping) {
+                isJumping = true;
+                velY = -15;
+            }
+        });
+
+        draw();
+    </script>
 </body>
 </html>
